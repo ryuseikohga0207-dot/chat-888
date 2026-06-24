@@ -13,11 +13,14 @@
         input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 1rem; }
         button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: background 0.2s; }
         button:hover { background: #0056b3; }
-        #messages { height: 350px; overflow-y: auto; border: 1px solid #e5e5e5; padding: 10px; margin-bottom: 12px; background: #fafafa; border-radius: 6px; }
-        .msg-box { margin-bottom: 12px; display: flex; flex-direction: column; }
-        .msg-name { font-size: 0.75rem; color: #666; margin-bottom: 2px; }
-        .msg-text { background: #e9ecef; padding: 8px 12px; border-radius: 14px; max-width: 80px; width: fit-content; word-break: break-all; font-size: 0.95rem; }
+        #messages { height: 400px; overflow-y: auto; border: 1px solid #e5e5e5; padding: 12px; margin-bottom: 12px; background: #fafafa; border-radius: 6px; }
+        .msg-box { margin-bottom: 12px; display: flex; flex-direction: column; align-items: flex-start; }
+        .msg-name { font-size: 0.75rem; color: #666; margin-bottom: 2px; padding-left: 4px; }
+        /* 🛠️ 修正: max-widthを80pxから75%に変更し、文字が縦長に潰れるのを防ぎました */
+        .msg-text { background: #e9ecef; padding: 8px 14px; border-radius: 16px; max-width: 75%; width: fit-content; word-break: break-all; font-size: 0.95rem; line-height: 1.4; }
+        /* 自分のメッセージを右側に寄せる設定 */
         .me { align-items: flex-end; }
+        .me .msg-name { padding-left: 0; padding-right: 4px; }
         .me .msg-text { background: #dcf8c6; color: #000; }
         .chat-input-group { display: flex; gap: 8px; }
         #msg-input { margin: 0; }
@@ -51,14 +54,14 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // 🛠️ 【重要】あなたのFirebase設定をここに貼り付けてください
-        const firebaseConfig = {
-            apiKey: "ここに置き換え",
-            authDomain: "ここに置き換え",
-            projectId: "ここに置き換え",
-            storageBucket: "ここに置き換え",
-            messagingSenderId: "ここに置き換え",
-            appId: "ここに置き換え"
+        // あなたのFirebase設定（維持しています）
+        const firebaseConfig = { 
+            apiKey: "AIzaSyArTezCPkvt-0iBXYM41pGiI1fWqVqFk6U", 
+            authDomain: "chat-protect.firebaseapp.com", 
+            projectId: "chat-protect", 
+            storageBucket: "chat-protect.firebasestorage.app", 
+            messagingSenderId: "662913678357", 
+            appId: "1:662913678357:web:d9f64aaa75237fd6f4a21c" 
         };
 
         const app = initializeApp(firebaseConfig);
@@ -102,6 +105,7 @@
             chatScreen.classList.add("active");
             roomTitle.textContent = `部屋: ${currentRoom}`;
             messagesDiv.innerHTML = "";
+            msgInput.focus(); // 🛠️ 改善: 入室時に入力欄に自動フォーカス
 
             // リアルタイムでメッセージを監視して自動更新
             const q = query(collection(db, "rooms", currentRoom, "messages"), orderBy("timestamp", "asc"));
@@ -130,6 +134,8 @@
             if(!text) return;
 
             msgInput.value = "";
+            msgInput.focus(); // 🛠️ 改善: 送信後、すぐ次の文字を打てるように入力欄にフォーカスを戻す
+            
             await addDoc(collection(db, "rooms", currentRoom, "messages"), {
                 name: myName,
                 text: text,
@@ -146,10 +152,3 @@
             chatScreen.classList.remove("active");
             loginScreen.classList.add("active");
         });
-
-        function escapeHTML(str) {
-            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-        }
-    </script>
-</body>
-</html>
