@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>合言葉リアルタイムチャット</title>
+    <title>合言葉リアルタイムチャット（エラーチェック版）</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; }
         .container { width: 100%; max-width: 500px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); box-sizing: border-box; }
@@ -16,9 +16,7 @@
         #messages { height: 400px; overflow-y: auto; border: 1px solid #e5e5e5; padding: 12px; margin-bottom: 12px; background: #fafafa; border-radius: 6px; }
         .msg-box { margin-bottom: 12px; display: flex; flex-direction: column; align-items: flex-start; }
         .msg-name { font-size: 0.75rem; color: #666; margin-bottom: 2px; padding-left: 4px; }
-        /* 🛠️ 修正: max-widthを80pxから75%に変更し、文字が縦長に潰れるのを防ぎました */
         .msg-text { background: #e9ecef; padding: 8px 14px; border-radius: 16px; max-width: 75%; width: fit-content; word-break: break-all; font-size: 0.95rem; line-height: 1.4; }
-        /* 自分のメッセージを右側に寄せる設定 */
         .me { align-items: flex-end; }
         .me .msg-name { padding-left: 0; padding-right: 4px; }
         .me .msg-text { background: #dcf8c6; color: #000; }
@@ -54,7 +52,6 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // あなたのFirebase設定（維持しています）
         const firebaseConfig = { 
             apiKey: "AIzaSyArTezCPkvt-0iBXYM41pGiI1fWqVqFk6U", 
             authDomain: "chat-protect.firebaseapp.com", 
@@ -64,8 +61,14 @@
             appId: "1:662913678357:web:d9f64aaa75237fd6f4a21c" 
         };
 
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
+        // 🛠️ 起動時エラーのチェック
+        let db;
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+        } catch (error) {
+            alert("【初期化エラー】Firebaseの設定ミスか、読み込みに失敗しました:\n" + error.message);
+        }
 
         let currentRoom = "";
         let myName = "";
@@ -82,7 +85,6 @@
         const sendBtn = document.getElementById("send-btn");
         const leaveBtn = document.getElementById("leave-btn");
 
-        // URLにハッシュがあれば自動入力（例: index.html#secret123）
         if(window.location.hash) {
             roomInput.value = window.location.hash.substring(1);
         }
@@ -101,32 +103,41 @@
         });
 
         function startChat() {
+            // 画面を切り替える
             loginScreen.classList.remove("active");
             chatScreen.classList.add("active");
             roomTitle.textContent = `部屋: ${currentRoom}`;
             messagesDiv.innerHTML = "";
-            msgInput.focus(); // 🛠️ 改善: 入室時に入力欄に自動フォーカス
+            msgInput.focus();
 
-            // リアルタイムでメッセージを監視して自動更新
-            const q = query(collection(db, "rooms", currentRoom, "messages"), orderBy("timestamp", "asc"));
-            unsubscribe = onSnapshot(q, (snapshot) => {
-                messagesDiv.innerHTML = "";
-                snapshot.forEach((doc) => {
-                    const data = doc.data();
-                    if (!data.text) return;
+            try {
+                const q = query(collection(db, "rooms", currentRoom, "messages"), orderBy("timestamp", "asc"));
+                
+                // 🛠️ 通信エラーのチェック
+                unsubscribe = onSnapshot(q, (snapshot) => {
+                    messagesDiv.innerHTML = "";
+                    snapshot.forEach((doc) => {
+                        const data = doc.data();
+                        if (!data.text) return;
 
-                    const msgBox = document.createElement("div");
-                    msgBox.classList.add("msg-box");
-                    if(data.name === myName) msgBox.classList.add("me");
+                        const msgBox = document.createElement("div");
+                        msgBox.classList.add("msg-box");
+                        if(data.name === myName) msgBox.classList.add("me");
 
-                    msgBox.innerHTML = `
-                        <div class="msg-name">${data.name}</div>
-                        <div class="msg-text">${escapeHTML(data.text)}</div>
-                    `;
-                    messagesDiv.appendChild(msgBox);
+                        msgBox.innerHTML = `
+                            <div class="msg-name">${data.name}</div>
+                            <div class="msg-text">${escapeHTML(data.text)}</div>
+                        `;
+                        messagesDiv.appendChild(msgBox);
+                    });
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                }, (error) => {
+                    // データベースの設定（本番モードのままなど）で弾かれたらここが動く
+                    alert("【通信エラー】データベースに接続できませんでした。\nFirestoreの作成状況やセキュリティルール（テストモード）を確認してください。\n\n詳細: " + error.message);
                 });
-                messagesDiv.scrollTop = messagesDiv.scrollHeight; // 最下部へスクロール
-            });
+            } catch (e) {
+                alert("【実行エラー】チャットの開始に失敗しました:\n" + e.message);
+            }
         }
 
         async function sendMessage() {
@@ -134,13 +145,17 @@
             if(!text) return;
 
             msgInput.value = "";
-            msgInput.focus(); // 🛠️ 改善: 送信後、すぐ次の文字を打てるように入力欄にフォーカスを戻す
+            msgInput.focus();
             
-            await addDoc(collection(db, "rooms", currentRoom, "messages"), {
-                name: myName,
-                text: text,
-                timestamp: serverTimestamp()
-            });
+            try {
+                await addDoc(collection(db, "rooms", currentRoom, "messages"), {
+                    name: myName,
+                    text: text,
+                    timestamp: serverTimestamp()
+                });
+            } catch (error) {
+                alert("【送信エラー】メッセージを送れませんでした:\n" + error.message);
+            }
         }
 
         sendBtn.addEventListener("click", sendMessage);
@@ -152,3 +167,10 @@
             chatScreen.classList.remove("active");
             loginScreen.classList.add("active");
         });
+
+        function escapeHTML(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        }
+    </script>
+</body>
+</html>
