@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>合言葉リアルタイムチャット</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .container { width: 100%; max-width: 500px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); box-sizing: border-box; }
+        h2 { margin-top: 0; color: #333; font-size: 1.3rem; }
+        #login-screen, #chat-screen { display: none; }
+        .active { display: block !important; }
+        input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 1rem; }
+        button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #0056b3; }
+        #messages { height: 350px; overflow-y: auto; border: 1px solid #e5e5e5; padding: 10px; margin-bottom: 12px; background: #fafafa; border-radius: 6px; }
+        .msg-box { margin-bottom: 12px; display: flex; flex-direction: column; }
+        .msg-name { font-size: 0.75rem; color: #666; margin-bottom: 2px; }
+        .msg-text { background: #e9ecef; padding: 8px 12px; border-radius: 14px; max-width: 80px; width: fit-content; word-break: break-all; font-size: 0.95rem; }
+        .me { align-items: flex-end; }
+        .me .msg-text { background: #dcf8c6; color: #000; }
+        .chat-input-group { display: flex; gap: 8px; }
+        #msg-input { margin: 0; }
+        #send-btn { width: 80px; }
+        #leave-btn { background: #dc3545; margin-top: 10px; padding: 8px; font-size: 0.9rem; }
+        #leave-btn:hover { background: #bd2130; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div id="login-screen" class="active">
+            <h2>🔑 合言葉でチャットに参加</h2>
+            <input type="text" id="room-input" placeholder="合言葉（例: secret123）">
+            <input type="text" id="name-input" placeholder="あなたの名前">
+            <button id="join-btn">入室する</button>
+        </div>
+
+        <div id="chat-screen">
+            <h2 id="room-title">部屋: </h2>
+            <div id="messages"></div>
+            <div class="chat-input-group">
+                <input type="text" id="msg-input" placeholder="メッセージを入力...">
+                <button id="send-btn">送信</button>
+            </div>
+            <button id="leave-btn">退室する</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // 🛠️ 【重要】あなたのFirebase設定をここに貼り付けてください
+        const firebaseConfig = {
+            apiKey: "ここに置き換え",
+            authDomain: "ここに置き換え",
+            projectId: "ここに置き換え",
+            storageBucket: "ここに置き換え",
+            messagingSenderId: "ここに置き換え",
+            appId: "ここに置き換え"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        let currentRoom = "";
+        let myName = "";
+        let unsubscribe = null;
+
+        const loginScreen = document.getElementById("login-screen");
+        const chatScreen = document.getElementById("chat-screen");
+        const roomInput = document.getElementById("room-input");
+        const nameInput = document.getElementById("name-input");
+        const joinBtn = document.getElementById("join-btn");
+        const roomTitle = document.getElementById("room-title");
+        const messagesDiv = document.getElementById("messages");
+        const msgInput = document.getElementById("msg-input");
+        const sendBtn = document.getElementById("send-btn");
+        const leaveBtn = document.getElementById("leave-btn");
+
+        // URLにハッシュがあれば自動入力（例: index.html#secret123）
+        if(window.location.hash) {
+            roomInput.value = window.location.hash.substring(1);
+        }
+
+        joinBtn.addEventListener("click", () => {
+            currentRoom = roomInput.value.trim();
+            myName = nameInput.value.trim() || "名無しさん";
+
+            if(!currentRoom) {
+                alert("合言葉を入力してください");
+                return;
+            }
+
+            window.location.hash = currentRoom;
+            startChat();
+        });
+
+        function startChat() {
+            loginScreen.classList.remove("active");
+            chatScreen.classList.add("active");
+            roomTitle.textContent = `部屋: ${currentRoom}`;
+            messagesDiv.innerHTML = "";
+
+            // リアルタイムでメッセージを監視して自動更新
+            const q = query(collection(db, "rooms", currentRoom, "messages"), orderBy("timestamp", "asc"));
+            unsubscribe = onSnapshot(q, (snapshot) => {
+                messagesDiv.innerHTML = "";
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    if (!data.text) return;
+
+                    const msgBox = document.createElement("div");
+                    msgBox.classList.add("msg-box");
+                    if(data.name === myName) msgBox.classList.add("me");
+
+                    msgBox.innerHTML = `
+                        <div class="msg-name">${data.name}</div>
+                        <div class="msg-text">${escapeHTML(data.text)}</div>
+                    `;
+                    messagesDiv.appendChild(msgBox);
+                });
+                messagesDiv.scrollTop = messagesDiv.scrollHeight; // 最下部へスクロール
+            });
+        }
+
+        async function sendMessage() {
+            const text = msgInput.value.trim();
+            if(!text) return;
+
+            msgInput.value = "";
+            await addDoc(collection(db, "rooms", currentRoom, "messages"), {
+                name: myName,
+                text: text,
+                timestamp: serverTimestamp()
+            });
+        }
+
+        sendBtn.addEventListener("click", sendMessage);
+        msgInput.addEventListener("keypress", (e) => { if(e.key === "Enter") sendMessage(); });
+
+        leaveBtn.addEventListener("click", () => {
+            if(unsubscribe) unsubscribe();
+            window.location.hash = "";
+            chatScreen.classList.remove("active");
+            loginScreen.classList.add("active");
+        });
+
+        function escapeHTML(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        }
+    </script>
+</body>
+</html>
